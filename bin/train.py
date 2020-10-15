@@ -32,7 +32,6 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow import gfile
 
 from seq2seq import models
-from seq2seq.contrib.experiment import Experiment as PatchedExperiment
 from seq2seq.configurable import _maybe_load_yaml, _create_from_dict
 from seq2seq.configurable import _deep_merge_dict
 from seq2seq.data import input_pipeline
@@ -79,7 +78,7 @@ tf.flags.DEFINE_string("output_dir", None,
                        to. If None, a local temporary directory is created.""")
 
 # Training parameters
-tf.flags.DEFINE_string("schedule", "continuous_train_and_eval",
+tf.flags.DEFINE_string("schedule", None,
                        """Estimator function to call, defaults to
                        continuous_train_and_eval for local run""")
 tf.flags.DEFINE_integer("train_steps", None,
@@ -106,13 +105,13 @@ tf.flags.DEFINE_integer("keep_checkpoint_every_n_hours", 4,
                         """In addition to keeping the most recent checkpoint
                         files, keep one checkpoint file for every N hours of
                         training.""")
-tf.flags.DEFINE_float("gpu_memory_fraction", 1.0,
+tf.flags.DEFINE_float("gpu_memory_fraction", 0.6,
                       """Fraction of GPU memory used by the process on
                       each GPU uniformly on the same machine.""")
-tf.flags.DEFINE_boolean("gpu_allow_growth", False,
+tf.flags.DEFINE_boolean("gpu_allow_growth", True,
                         """Allow GPU memory allocation to grow
                         dynamically.""")
-tf.flags.DEFINE_boolean("log_device_placement", False,
+tf.flags.DEFINE_boolean("log_device_placement", True,
                         """Log the op placement to devices""")
 
 
@@ -126,14 +125,16 @@ def create_experiment(output_dir):
     output_dir: Output directory for model checkpoints and summaries.
   """
 
+  session_config = tf.ConfigProto()
+  session_config.gpu_options.allow_growth = FLAGS.gpu_allow_growth
+  session_config.gpu_options.per_process_gpu_memory_fraction = FLAGS.gpu_memory_fraction
   config = run_config.RunConfig(
       tf_random_seed=FLAGS.tf_random_seed,
       save_checkpoints_secs=FLAGS.save_checkpoints_secs,
       save_checkpoints_steps=FLAGS.save_checkpoints_steps,
       keep_checkpoint_max=FLAGS.keep_checkpoint_max,
       keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours,
-      gpu_memory_fraction=FLAGS.gpu_memory_fraction)
-  config.tf_config.gpu_options.allow_growth = FLAGS.gpu_allow_growth
+      session_config=session_config)
   config.tf_config.log_device_placement = FLAGS.log_device_placement
 
   train_options = training_utils.TrainOptions(
@@ -203,7 +204,7 @@ def create_experiment(output_dir):
     metric = _create_from_dict(dict_, metric_specs)
     eval_metrics[metric.name] = metric
 
-  experiment = PatchedExperiment(
+  experiment = tf.contrib.learn.Experiment(
       estimator=estimator,
       train_input_fn=train_input_fn,
       eval_input_fn=eval_input_fn,
